@@ -93,10 +93,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='music boundary detection')
     parser.add_argument('--data-dir', default='./data/',
                         help='folder where audio feature files are stored')
+    parser.add_argument('--weight-dir', default='./weight/',
+                        help='folder where to store the weights of the model')
     parser.add_argument('--figure-dir', default='./fig/',
                         help='folder where to store the figures')
     args = parser.parse_args()
     
+    # -----------------------------------
     # --- Set Training and Test set
     pyjama_file = './rwc-pop.pyjama'
     with open(pyjama_file, 'r') as fid: 
@@ -116,8 +119,21 @@ if __name__ == '__main__':
     test_dataset = CohenDataSet(test_entry_l, test_set_hdf5)
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False, num_workers=0)
 
+    # ----------------------------------
+    # ---- Training
+    do_save_weight = True
+    if not os.path.exists(args.weight_dir):  os.makedirs(args.weight_dir) 
+    name_exp = 'aes2017'
+    torch_best_file = f"{args.weight_dir}/{name_exp}_best.pt"
+    torch_epoch_file = f"{args.weight_dir}/{name_exp}_last.pt"
+    best_loss = float('inf')
+
     nb_epoch = 50
-    model = CohenConvNet().cuda()
+    
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "error")
+    print(f"using device: {device}")
+
+    model = CohenConvNet().to(device)
     criterion = torch.nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
@@ -126,6 +142,7 @@ if __name__ == '__main__':
     for num_epoch in range(nb_epoch):    
             # --- Train
             model.train()
+            running_train_loss = 0.0
             for batch_idx, batch in enumerate(tqdm(train_loader)):
                 LMS_data_m = batch[0][:,None,:,:]
                 SSM_data_m = torch.cat((batch[1][:,None,:,:], batch[2][:,None,:,:]), 1)
@@ -133,22 +150,30 @@ if __name__ == '__main__':
 
                 model.zero_grad()
                 hat_is_boundary = model(LMS_data_m, SSM_data_m)
-                loss = criterion(hat_is_boundary, is_boundary)
-                loss.backward()
+                train_loss = criterion(hat_is_boundary, is_boundary)
+                train_loss.backward()
                 optimizer.step()
-            print(f'epoch: {num_epoch} train_loss: {loss.item()}')
-            train_loss_l.append(loss.item())
+                running_train_loss += train_loss.item()
+            print(f'epoch: {num_epoch} train_loss: {running_train_loss}')
+            train_loss_l.append(running_train_loss)
 
             # --- Eval
             model.eval()
+            running_val_loss = 0.0
             for batch_idx, batch in enumerate(test_loader):
                 LMS_data_m = batch[0][:,None,:,:]
                 SSM_data_m = torch.cat((batch[1][:,None,:,:], batch[2][:,None,:,:]), 1)
                 is_boundary = batch[3]
 
                 hat_is_boundary = model(LMS_data_m, SSM_data_m)
-                loss = criterion(hat_is_boundary, is_boundary)
-            print(f'\tepoch: {num_epoch} test_loss: {loss.item()}')
-            test_loss_l.append(loss.item())
+                val_loss = criterion(hat_is_boundary, is_boundary)
+                running_val_loss += val_loss.item()
+            print(f'\tepoch: {num_epoch} test_loss: {running_val_loss}')
+            test_loss_l.append(running_val_loss)
 
             tools_plot.F_test_onefile(test_dataset, num_epoch, model, args.figure_dir)
+
+            if running_val_loss <= best_loss:
+                if do_save_weight: torch.save(model.state_dict(), torch_best_file)
+                best_loss = running_val_loss
+            if do_save_weight: torch.save(model.state_dict(), torch_epoch_file)
