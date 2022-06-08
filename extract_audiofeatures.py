@@ -56,21 +56,9 @@ def F_subsample2D(data_m, time_sec_v, factor):
     return sub_data_m, sub_time_sec_v
 
 
-
-def F_get_audio_features(inputs):
+def F_get_audio_features_sub(audio_file):
     """
-    description:
-        extract audio features (Log-Mel-Spectrogram, MFCC-Self-Similarity-Matrix, Chroma-Self-Similarity-Matrix) for a given file and 
-        save results in a .npz file
-    inputs:
-        - audio_file: full path to an audio file
-        - data_dir: folder where to write the .npz file
-    outputs:
-        -
     """
-    audio_file = inputs[0]
-    data_dir = inputs[1]
-
     print(f'computing {audio_file}')
     audio_v, sr_hz = librosa.load(audio_file)
     
@@ -122,6 +110,27 @@ def F_get_audio_features(inputs):
     # --- Downsmaple by 3
     subSSMchroma_data_m, subSSMchroma_time_sec_v = F_subsample2D(SSMchroma_data_m, CHROMA_time_sec_v, 3)
 
+    return subLMS_data_m, subLMS_time_sec_v, subSSMmfcc_data_m, subSSMmfcc_time_sec_v, subSSMchroma_data_m, subSSMchroma_time_sec_v
+
+
+
+
+def F_get_audio_features(inputs):
+    """
+    description:
+        extract audio features (Log-Mel-Spectrogram, MFCC-Self-Similarity-Matrix, Chroma-Self-Similarity-Matrix) for a given file and 
+        save results in a .npz file
+    inputs:
+        - audio_file: full path to an audio file
+        - data_dir: folder where to write the .npz file
+    outputs:
+        -
+    """
+    audio_file = inputs[0]
+    data_dir = inputs[1]
+
+    subLMS_data_m, subLMS_time_sec_v, subSSMmfcc_data_m, subSSMmfcc_time_sec_v, subSSMchroma_data_m, subSSMchroma_time_sec_v = F_get_audio_features_sub(audio_file)
+
     out_file = tools.F_get_filename(audio_file, data_dir)
     np.savez(out_file, 
             LMS_data_m=subLMS_data_m, LMS_time_sec_v=subLMS_time_sec_v, 
@@ -129,6 +138,7 @@ def F_get_audio_features(inputs):
             SSMchroma_data_m=subSSMchroma_data_m, SSMchroma_time_sec_v=subSSMchroma_time_sec_v,
             )
     return
+
 
 
 
